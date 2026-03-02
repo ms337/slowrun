@@ -26,6 +26,8 @@ from torch import Tensor
 import wandb
 import tiktoken
 
+_script_start = time.time()
+
 # =============================================================================
 # CLI arguments
 # =============================================================================
@@ -193,17 +195,17 @@ class CausalSelfAttention(nn.Module):
         y = y.contiguous().view(B, T, -1)
         return self.resid_dropout(self.c_proj(y))
 
-
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)
+        hidden = 256 * ((8 * config.n_embd // 3 + 255) // 256)
+        self.c_gate = nn.Linear(config.n_embd, hidden, bias=False)
+        self.c_fc = nn.Linear(config.n_embd, hidden, bias=False)
+        self.c_proj = nn.Linear(hidden, config.n_embd, bias=False)
         self.resid_dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
-        return self.resid_dropout(self.c_proj(F.relu(self.c_fc(x)).square()))
-
+        return self.resid_dropout(self.c_proj(F.silu(self.c_gate(x)) * self.c_fc(x)))
 
 class Block(nn.Module):
     def __init__(self, config, layer_idx):
@@ -250,6 +252,7 @@ class GPT(nn.Module):
             torch.nn.init.uniform_(block.attn.c_k.weight, -s, s)
             torch.nn.init.uniform_(block.attn.c_v.weight, -s, s)
             torch.nn.init.zeros_(block.attn.c_proj.weight)
+            torch.nn.init.uniform_(block.mlp.c_gate.weight, -s, s)
             torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
         self.resid_lambdas.fill_(1.0)
@@ -842,6 +845,9 @@ if args.save_result and master_process:
     with open(args.save_result, "w") as f:
         json.dump(result, f, indent=2)
     print0(f"Result saved to {args.save_result}")
+
+total_wall_time = time.time() - _script_start
+print0(f"Total wall time: {total_wall_time:.2f}s ({total_wall_time/60:.2f}m)")
 
 wandb_run.finish()
 if dist.is_initialized():
