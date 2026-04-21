@@ -996,7 +996,7 @@ print0(f"FLOPs per token: {num_flops_per_token:e}")
 
 # Compile
 orig_model = model
-model = torch.compile(model, dynamic=False)
+model = torch.compile(model, dynamic=False, mode="max-autotune-no-cudagraphs")
 
 # Optimizer
 optimizer = model.setup_optimizer()
@@ -1071,7 +1071,7 @@ while not args.eval_logit_avg and current_epoch <= args.num_epochs:
     if not dupe_active and current_epoch >= args.dupe_start_epoch:
         print0(f"\n=== Enabling dupe-layers at epoch {current_epoch} ===")
         orig_model.set_dupe_layers(args.dupe_layers_start, args.dupe_layers_end, args.dupe_loops)
-        model = torch.compile(orig_model, dynamic=False)
+        model = torch.compile(orig_model, dynamic=False, mode="max-autotune-no-cudagraphs")
         # model = orig_model # replace compile with this line for eager mode
         dupe_active = True
         timing_start_step = step + 4  # skip dupe recompile + 3 warmup steps
@@ -1189,7 +1189,7 @@ if logit_avg_count > 0:
         n = len(ckpt_paths_for_logit)
         print0(f"\n--- Evaluating logit avg ({n} checkpoints: {[os.path.basename(p) for p in ckpt_paths_for_logit]}) ---")
 
-        la_model = torch.compile(orig_model, dynamic=False)
+        la_model = torch.compile(orig_model, dynamic=False, mode="max-autotune-no-cudagraphs")
         la_model.eval()
 
         def _run_mode(label, weights):
